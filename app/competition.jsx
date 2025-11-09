@@ -1,0 +1,285 @@
+import { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  Button,
+  FlatList,
+  Modal,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { matches } from "../constants/matches";
+import { getDatabase, ref, set, update, get } from "firebase/database";
+import { firebaseApp } from "../firebaseConfig";
+
+export default function MatchesScreen() {
+  const router = useRouter();
+  const [predictions, setPredictions] = useState([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [submissionClosed, setSubmissionClosed] = useState(false);
+  const [teams, setTeams] = useState({}); // load team info dynamically
+
+  const competition = "Magnum2025"; // can be made dynamic later
+
+  // 🧠 Load saved predictions when modal visibility changes
+  useEffect(() => {
+    const loadPredictions = async () => {
+      const stored = await AsyncStorage.getItem("predictions");
+      setPredictions(stored ? JSON.parse(stored) : []);
+    };
+    loadPredictions();
+  }, [modalVisible]);
+
+  // 🕒 Check if submission deadline passed
+  useEffect(() => {
+    const checkDeadline = async () => {
+      const db = getDatabase(firebaseApp);
+      const snap = await get(ref(db, `deadlines/${competition}`));
+      const deadline = snap.exists() ? new Date(snap.val()) : null;
+      if (deadline && new Date() > deadline) setSubmissionClosed(true);
+    };
+    checkDeadline();
+  }, []);
+
+  // 🏅 Load teams dynamically from Firebase
+  useEffect(() => {
+    const fetchTeams = async () => {
+      const db = getDatabase(firebaseApp);
+      const snap = await get(ref(db, `teams/competitions/${competition}`));
+      if (snap.exists()) {
+        setTeams(snap.val()); // { t1: { name: "Exeter Blue", hasSubmitted: false }, ... }
+      }
+    };
+    fetchTeams();
+  }, []);
+
+  // 🧩 Merge predictions with match data
+  const orderedMatches = matches.map((m) => {
+    const existing = predictions.find((p) => p.id === m.id);
+    return existing ? { ...m, winner: existing.winner } : m;
+  });
+
+  // 🪞 Preview predictions before submitting
+  const handlePreviewAndSubmit = async () => {
+    const snap = await get(
+      ref(getDatabase(firebaseApp), `deadlines/${competition}`)
+    );
+    const deadline = snap.exists() ? new Date(snap.val()) : null;
+    if (deadline && new Date() > deadline) {
+      Alert.alert(
+        "Submissions Closed",
+        `Predictions for ${competition} closed at ${deadline.toLocaleString()}.`
+      );
+      return;
+    }
+    if (predictions.length === 0) {
+      Alert.alert("No Predictions", "You have not made any predictions yet!");
+      return;
+    }
+    setModalVisible(true);
+  };
+
+  return (
+    <View style={styles.container}>
+      {/* 🔙 Back Button */}
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={24} color="#333" />
+      </TouchableOpacity>
+
+      <Text style={styles.title}>Competition Predictions</Text>
+
+      {/* 🏆 Match List */}
+      <FlatList
+        data={orderedMatches}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => {
+          const teamAName = teams[item.teamA]?.name || item.teamA;
+          const teamBName = teams[item.teamB]?.name || item.teamB;
+          const selectedWinner = predictions.find(
+            (p) => p.id === item.id
+          )?.winner;
+
+          return (
+            <View style={styles.matchItem}>
+              <Text style={styles.matchText}>
+                {teamAName} vs {teamBName}
+              </Text>
+
+              <View style={styles.teamsContainer}>
+                {[teamAName, teamBName].map((team) => {
+                  const isSelected = selectedWinner === team;
+                  return (
+                    <TouchableOpacity
+                      key={team}
+                      style={[
+                        styles.teamButton,
+                        isSelected && styles.selectedTeamButton,
+                      ]}
+                      onPress={async () => {
+                        const newPredictions = predictions.filter(
+                          (p) => p.id !== item.id
+                        );
+                        newPredictions.push({
+                          id: item.id,
+                          teamA: teamAName,
+                          teamB: teamBName,
+                          winner: team,
+                        });
+                        setPredictions(newPredictions);
+                        await AsyncStorage.setItem(
+                          "predictions",
+                          JSON.stringify(newPredictions)
+                        );
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.teamButtonText,
+                          isSelected && styles.selectedTeamButtonText,
+                        ]}
+                      >
+                        {team}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      {/* 🔍 Preview Button */}
+      <Button
+        title="Preview & Submit"
+        onPress={handlePreviewAndSubmit}
+        disabled={submissionClosed}
+      />
+
+      {/* 🧾 Modal for Preview + Submission */}
+      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalView}>
+            <Text style={styles.modalTitle}>Your Predictions</Text>
+
+            {predictions.map((p) => (
+              <Text key={p.id} style={styles.predictionText}>
+                {p.teamA} vs {p.teamB} →{" "}
+                <Text style={{ fontWeight: "bold" }}>{p.winner}</Text>
+              </Text>
+            ))}
+
+            <View style={styles.modalButtons}>
+              <Button title="Go Back" onPress={() => setModalVisible(false)} />
+              <Button
+                title="Submit"
+                onPress={async () => {
+                  try {
+                    const teamName = await AsyncStorage.getItem("teamName");
+                    if (!teamName) {
+                      alert(
+                        "No team selected. Please go back and select your team first."
+                      );
+                      return;
+                    }
+
+                    const db = getDatabase(firebaseApp);
+                    const teamRef = ref(
+                      db,
+                      `teams/competitions/${competition}/${teamName}`
+                    );
+                    const teamSnap = await get(teamRef);
+
+                    if (teamSnap.exists() && teamSnap.val().hasSubmitted) {
+                      alert("Your team has already made their predictions!");
+                      return;
+                    }
+
+                    const submission = {
+                      teamName,
+                      competition,
+                      timeSubmitted: new Date().toISOString(),
+                      predictions,
+                    };
+
+                    await set(ref(db, `submissions/${teamName}`), submission);
+                    await update(teamRef, { hasSubmitted: true });
+                    await AsyncStorage.setItem(
+                      "lockedPredictions",
+                      JSON.stringify(submission)
+                    );
+                    await AsyncStorage.removeItem("predictions");
+
+                    alert("Predictions submitted successfully!");
+                    setModalVisible(false);
+                    router.replace("/(tabs)/predictions");
+                  } catch (error) {
+                    console.error("Error submitting predictions:", error);
+                    alert("Error submitting predictions.");
+                  }
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, backgroundColor: "white" },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  backButton: { position: "absolute", top: 40, left: 20, zIndex: 1 },
+  matchItem: { marginVertical: 10 },
+  matchText: { fontSize: 18, textAlign: "center" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalView: {
+    width: "90%",
+    maxHeight: "80%",
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  predictionText: { fontSize: 16, marginVertical: 6 },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+  },
+  teamsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 8,
+  },
+  teamButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#007AFF",
+    borderRadius: 8,
+  },
+  selectedTeamButton: { backgroundColor: "#28a745", borderColor: "#28a745" },
+  teamButtonText: { fontSize: 16, textAlign: "center", color: "#007AFF" },
+  selectedTeamButtonText: { color: "white", fontWeight: "bold" },
+});
