@@ -12,7 +12,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { matches } from "../constants/matches";
+import { matches as rawMatches } from "../constants/matches";
 import { getDatabase, ref, set, update, get } from "firebase/database";
 import { firebaseApp } from "../firebaseConfig";
 
@@ -21,11 +21,11 @@ export default function MatchesScreen() {
   const [predictions, setPredictions] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [submissionClosed, setSubmissionClosed] = useState(false);
-  const [teams, setTeams] = useState({}); // load team info dynamically
+  const [teams, setTeams] = useState({}); // stores team info dynamically
 
-  const competition = "Magnum2025"; // can be made dynamic later
+  const competition = "magnum2025";
 
-  // 🧠 Load saved predictions when modal visibility changes
+  // Load saved predictions
   useEffect(() => {
     const loadPredictions = async () => {
       const stored = await AsyncStorage.getItem("predictions");
@@ -34,7 +34,7 @@ export default function MatchesScreen() {
     loadPredictions();
   }, [modalVisible]);
 
-  // 🕒 Check if submission deadline passed
+  // Check if submission deadline passed
   useEffect(() => {
     const checkDeadline = async () => {
       const db = getDatabase(firebaseApp);
@@ -45,25 +45,27 @@ export default function MatchesScreen() {
     checkDeadline();
   }, []);
 
-  // 🏅 Load teams dynamically from Firebase
+  // Load teams dynamically from Firebase
   useEffect(() => {
     const fetchTeams = async () => {
       const db = getDatabase(firebaseApp);
-      const snap = await get(ref(db, `teams/competitions/${competition}`));
+      const snap = await get(ref(db, `teams/${competition}`));
       if (snap.exists()) {
-        setTeams(snap.val()); // { t1: { name: "Exeter Blue", hasSubmitted: false }, ... }
+        setTeams(snap.val()); // { t1: { hasSubmitted, teamName }, ... }
       }
     };
     fetchTeams();
   }, []);
 
-  // 🧩 Merge predictions with match data
-  const orderedMatches = matches.map((m) => {
+  // Merge predictions with match data
+  const orderedMatches = rawMatches.map((m) => {
     const existing = predictions.find((p) => p.id === m.id);
-    return existing ? { ...m, winner: existing.winner } : m;
+    return existing
+      ? { ...m, winner: existing.winner, competitionId: competition }
+      : { ...m, competitionId: competition };
   });
 
-  // 🪞 Preview predictions before submitting
+  // Preview predictions before submitting
   const handlePreviewAndSubmit = async () => {
     const snap = await get(
       ref(getDatabase(firebaseApp), `deadlines/${competition}`)
@@ -85,20 +87,18 @@ export default function MatchesScreen() {
 
   return (
     <View style={styles.container}>
-      {/* 🔙 Back Button */}
       <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
         <Ionicons name="arrow-back" size={24} color="#333" />
       </TouchableOpacity>
 
       <Text style={styles.title}>Competition Predictions</Text>
 
-      {/* 🏆 Match List */}
       <FlatList
         data={orderedMatches}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
-          const teamAName = teams[item.teamA]?.name || item.teamA;
-          const teamBName = teams[item.teamB]?.name || item.teamB;
+          const teamAName = teams[item.teamA]?.teamName || item.teamA;
+          const teamBName = teams[item.teamB]?.teamName || item.teamB;
           const selectedWinner = predictions.find(
             (p) => p.id === item.id
           )?.winner;
@@ -108,7 +108,6 @@ export default function MatchesScreen() {
               <Text style={styles.matchText}>
                 {teamAName} vs {teamBName}
               </Text>
-
               <View style={styles.teamsContainer}>
                 {[teamAName, teamBName].map((team) => {
                   const isSelected = selectedWinner === team;
@@ -128,6 +127,7 @@ export default function MatchesScreen() {
                           teamA: teamAName,
                           teamB: teamBName,
                           winner: team,
+                          competitionId: item.competitionId,
                         });
                         setPredictions(newPredictions);
                         await AsyncStorage.setItem(
@@ -153,25 +153,27 @@ export default function MatchesScreen() {
         }}
       />
 
-      {/* 🔍 Preview Button */}
       <Button
         title="Preview & Submit"
         onPress={handlePreviewAndSubmit}
         disabled={submissionClosed}
       />
 
-      {/* 🧾 Modal for Preview + Submission */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalView}>
             <Text style={styles.modalTitle}>Your Predictions</Text>
 
-            {predictions.map((p) => (
-              <Text key={p.id} style={styles.predictionText}>
-                {p.teamA} vs {p.teamB} →{" "}
-                <Text style={{ fontWeight: "bold" }}>{p.winner}</Text>
-              </Text>
-            ))}
+            {/* Sort predictions by match id */}
+            {predictions
+              .slice() // make a copy so we don’t mutate state
+              .sort((a, b) => parseInt(a.id) - parseInt(b.id))
+              .map((p) => (
+                <Text key={p.id} style={styles.predictionText}>
+                  {p.teamA} vs {p.teamB} →{" "}
+                  <Text style={{ fontWeight: "bold" }}>{p.winner}</Text>
+                </Text>
+              ))}
 
             <View style={styles.modalButtons}>
               <Button title="Go Back" onPress={() => setModalVisible(false)} />
@@ -188,10 +190,7 @@ export default function MatchesScreen() {
                     }
 
                     const db = getDatabase(firebaseApp);
-                    const teamRef = ref(
-                      db,
-                      `teams/competitions/${competition}/${teamName}`
-                    );
+                    const teamRef = ref(db, `teams/${competition}/${teamName}`);
                     const teamSnap = await get(teamRef);
 
                     if (teamSnap.exists() && teamSnap.val().hasSubmitted) {

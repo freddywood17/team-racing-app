@@ -23,6 +23,8 @@ export default function RootLayout() {
           name="index"
           options={{ title: "Home", headerShown: false }}
         />
+        <Stack.Screen name="competition" options={{ headerShown: false }} />
+
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       </Stack>

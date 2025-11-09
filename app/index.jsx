@@ -7,19 +7,21 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getDatabase, ref, get, onValue, update } from "firebase/database";
 import { firebaseApp } from "../firebaseConfig";
 import { Picker } from "@react-native-picker/picker";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const competition = "Magnum2025"; // can be dynamic later
+  const competition = "magnum2025"; // can be dynamic later
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [teamName, setTeamName] = useState("");
+  const [selectedTeamId, setSelectedTeamId] = useState("");
   const [teams, setTeams] = useState([]);
   const [deadlinePassed, setDeadlinePassed] = useState(false);
   const [loadingTeams, setLoadingTeams] = useState(true);
@@ -50,14 +52,14 @@ export default function HomeScreen() {
   // 🔥 Load team list from Firebase dynamically
   useEffect(() => {
     const db = getDatabase(firebaseApp);
-    const teamsRef = ref(db, `teams/competitions/${competition}`);
+    const teamsRef = ref(db, `teams/${competition}`);
 
     const unsubscribe = onValue(teamsRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
         const teamList = Object.keys(data).map((key) => ({
           id: key,
-          name: data[key].name,
+          name: data[key].teamName || key,
           hasSubmitted: data[key].hasSubmitted || false,
         }));
         setTeams(teamList);
@@ -70,6 +72,11 @@ export default function HomeScreen() {
     return () => unsubscribe();
   }, []);
 
+  const getSelectedTeamName = () => {
+    const team = teams.find((t) => t.id === selectedTeamId);
+    return team ? team.name : "";
+  };
+
   // 🚀 Handle main button press
   const handleMainButtonPress = () => {
     if (hasPredictions || deadlinePassed) {
@@ -81,26 +88,28 @@ export default function HomeScreen() {
 
   // ✅ Handle team selection
   const handleContinue = async () => {
-    if (!teamName) {
+    if (!selectedTeamId) {
       Alert.alert("Please select a team");
       return;
     }
 
     const db = getDatabase(firebaseApp);
-    const teamRef = ref(db, `teams/competitions/${competition}/${teamName}`);
+    const teamRef = ref(db, `teams/${competition}/${selectedTeamId}`);
     const teamSnap = await get(teamRef);
     const teamData = teamSnap.exists() ? teamSnap.val() : {};
 
     if (teamData.hasSubmitted) {
       Alert.alert(
         "Team Already Submitted",
-        `${teamData.name} has already entered their predictions!`,
+        `${
+          teamData.teamName || getSelectedTeamName()
+        } has already entered their predictions!`,
         [{ text: "OK", style: "cancel" }]
       );
       return;
     }
 
-    await AsyncStorage.setItem("teamName", teamName);
+    await AsyncStorage.setItem("teamName", selectedTeamId);
     setModalVisible(false);
     router.push("/competition");
   };
@@ -109,16 +118,14 @@ export default function HomeScreen() {
   const handleClearLocalData = async () => {
     try {
       const db = getDatabase(firebaseApp);
-      const teamsRef = ref(db, `teams/competitions/${competition}`);
+      const teamsRef = ref(db, `teams/${competition}`);
       const snapshot = await get(teamsRef);
 
       if (snapshot.exists()) {
         const data = snapshot.val();
         const updates = {};
         Object.keys(data).forEach((teamKey) => {
-          updates[
-            `teams/competitions/${competition}/${teamKey}/hasSubmitted`
-          ] = false;
+          updates[`teams/${competition}/${teamKey}/hasSubmitted`] = false;
         });
         await update(ref(db), updates);
       }
@@ -164,49 +171,64 @@ export default function HomeScreen() {
       </TouchableOpacity>
 
       {/* 🧩 Team selection modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Select Your Team</Text>
-
-            {loadingTeams ? (
-              <ActivityIndicator size="large" color="#007AFF" />
-            ) : teams.length > 0 ? (
-              <>
-                <Picker
-                  selectedValue={teamName}
-                  onValueChange={(itemValue) => setTeamName(itemValue)}
-                  style={styles.picker}
-                >
-                  <Picker.Item label="Choose your team..." value="" />
-                  {teams.map((team) => (
-                    <Picker.Item
-                      key={team.id}
-                      label={
-                        team.hasSubmitted
-                          ? `${team.name} (Already Entered)`
-                          : team.name
-                      }
-                      value={team.id}
-                      enabled={!team.hasSubmitted}
-                    />
-                  ))}
-                </Picker>
-
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalView}>
                 <TouchableOpacity
-                  style={styles.continueButton}
-                  onPress={handleContinue}
+                  style={styles.closeButton}
+                  onPress={() => setModalVisible(false)}
                 >
-                  <Text style={styles.continueText}>
-                    Continue as {teamName || "Team"}
-                  </Text>
+                  <Ionicons name="close" size={24} color="black" />
                 </TouchableOpacity>
-              </>
-            ) : (
-              <Text>No teams available yet.</Text>
-            )}
+
+                <Text style={styles.modalTitle}>Select Your Team</Text>
+
+                {loadingTeams ? (
+                  <ActivityIndicator size="large" color="#007AFF" />
+                ) : teams.length > 0 ? (
+                  <>
+                    <Picker
+                      selectedValue={selectedTeamId}
+                      onValueChange={(itemValue) =>
+                        setSelectedTeamId(itemValue)
+                      }
+                      style={styles.picker}
+                    >
+                      <Picker.Item label="Choose your team..." value="" />
+                      {teams
+                        .sort((a, b) => a.name.localeCompare(b.name)) // 🔹 sort alphabetically
+                        .map((team) => (
+                          <Picker.Item
+                            key={team.id}
+                            label={
+                              team.hasSubmitted
+                                ? `${team.name} (Already Entered)`
+                                : team.name
+                            }
+                            value={team.id}
+                            enabled={!team.hasSubmitted}
+                          />
+                        ))}
+                    </Picker>
+
+                    <TouchableOpacity
+                      style={styles.continueButton}
+                      onPress={handleContinue}
+                    >
+                      <Text style={styles.continueText}>
+                        Continue as {getSelectedTeamName() || "Team"}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text>No teams available yet.</Text>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -240,6 +262,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     alignItems: "center",
+    position: "relative",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    zIndex: 1,
   },
   modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 15 },
   picker: { width: "100%", marginVertical: 10 },
