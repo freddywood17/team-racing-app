@@ -1,18 +1,13 @@
-// firebaseConfig.js
 import { initializeApp } from "firebase/app";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCeeLLMdCtDiUrmzKUzTPywrVzD3oZD5S8",
-  authDomain: "sailing-predictor.firebaseapp.com",
-  databaseURL:
-    "https://sailing-predictor-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "sailing-predictor",
-  storageBucket: "sailing-predictor.firebasestorage.app",
-  messagingSenderId: "665292803131",
-  appId: "1:665292803131:web:3ca90c564699e7346ea01e",
+  apiKey: process.env.EXPO_PUBLIC_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_AUTH_DOMAIN,
+  databaseURL: process.env.EXPO_PUBLIC_DATABASE_URL,
+  projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_APP_ID,
 };
 
-// ✅ Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-export { app as firebaseApp };
+export const firebaseApp = initializeApp(firebaseConfig);
