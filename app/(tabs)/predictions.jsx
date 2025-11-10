@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { matches } from "../../constants/matches";
 import { firebaseApp } from "../../firebaseConfig";
 
 export default function MyPredictionsScreen() {
@@ -23,11 +22,10 @@ export default function MyPredictionsScreen() {
     const stored = await AsyncStorage.getItem("lockedPredictions");
     if (stored) {
       const parsed = JSON.parse(stored);
-      const ordered = matches
-        .map(
-          (m) => parsed.predictions[m.id] ?? parsed.predictions[m.id.toString()]
-        )
-        .filter(Boolean);
+      // Convert predictions object to an array sorted by numeric key
+      const ordered = Object.keys(parsed.predictions)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((key) => parsed.predictions[key]);
       setPredictions(ordered);
     } else {
       setPredictions([]);
