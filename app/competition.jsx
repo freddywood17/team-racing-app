@@ -1,19 +1,19 @@
-import { useState, useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
+import { get, getDatabase, ref, set, update } from "firebase/database";
+import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  Alert,
   Button,
   FlatList,
   Modal,
   StyleSheet,
-  Alert,
+  Text,
   TouchableOpacity,
+  View,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import { matches as rawMatches } from "../constants/matches";
-import { getDatabase, ref, set, update, get } from "firebase/database";
 import { firebaseApp } from "../firebaseConfig";
 
 export default function MatchesScreen() {
@@ -164,9 +164,8 @@ export default function MatchesScreen() {
           <View style={styles.modalView}>
             <Text style={styles.modalTitle}>Your Predictions</Text>
 
-            {/* Sort predictions by match id */}
             {predictions
-              .slice() // make a copy so we don’t mutate state
+              .slice()
               .sort((a, b) => parseInt(a.id) - parseInt(b.id))
               .map((p) => (
                 <Text key={p.id} style={styles.predictionText}>
@@ -198,15 +197,22 @@ export default function MatchesScreen() {
                       return;
                     }
 
+                    // Convert array to object for Realtime Database
+                    const predictionsObj = {};
+                    predictions.forEach((p, index) => {
+                      predictionsObj[index] = p;
+                    });
+
                     const submission = {
                       teamName,
                       competition,
                       timeSubmitted: new Date().toISOString(),
-                      predictions,
+                      predictions: predictionsObj,
                     };
 
                     await set(ref(db, `submissions/${teamName}`), submission);
                     await update(teamRef, { hasSubmitted: true });
+
                     await AsyncStorage.setItem(
                       "lockedPredictions",
                       JSON.stringify(submission)
