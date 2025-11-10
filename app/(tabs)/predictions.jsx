@@ -18,14 +18,14 @@ export default function MyPredictionsScreen() {
   const [results, setResults] = useState({});
   const router = useRouter();
 
-  // Load user's saved predictions from AsyncStorage
+  // Load user's saved predictions
   const loadPredictions = async () => {
     const stored = await AsyncStorage.getItem("lockedPredictions");
     if (stored) {
       const parsed = JSON.parse(stored);
       const ordered = matches
         .map(
-          (m) => parsed.predictions[m.id] || parsed.predictions[m.id.toString()]
+          (m) => parsed.predictions[m.id] ?? parsed.predictions[m.id.toString()]
         )
         .filter(Boolean);
       setPredictions(ordered);
@@ -34,19 +34,13 @@ export default function MyPredictionsScreen() {
     }
   };
 
-  // Live listener for match results
+  // Live listener for results
   const startResultsListener = () => {
     const db = getDatabase(firebaseApp);
-    const resultsRef = ref(db, "results/magnum2025"); // can make dynamic later
-
+    const resultsRef = ref(db, "results/magnum2025"); // dynamic later if needed
     const unsubscribe = onValue(resultsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        setResults(snapshot.val());
-      } else {
-        setResults({});
-      }
+      setResults(snapshot.exists() ? snapshot.val() : {});
     });
-
     return unsubscribe;
   };
 
@@ -60,12 +54,9 @@ export default function MyPredictionsScreen() {
 
   const renderItem = ({ item }) => {
     const matchResult = results[item.id];
-    let resultText = "⏰ Pending";
-
-    if (matchResult) {
-      const correct = matchResult === item.winner;
-      resultText = `${matchResult} ${correct ? "✅" : "❌"}`;
-    }
+    const resultText = matchResult
+      ? `${matchResult} ${matchResult === item.winner ? "✅" : "❌"}`
+      : "⏰ Pending";
 
     return (
       <View style={styles.row}>
