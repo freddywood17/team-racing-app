@@ -13,31 +13,27 @@ export default function LeaderboardScreen() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const competition = "magnum2025"; // can be dynamic later
+  const competition = "magnum2025"; // can make dynamic later
 
   useEffect(() => {
     const db = getDatabase(firebaseApp);
     const submissionsRef = ref(db, `submissions/${competition}`);
     const resultsRef = ref(db, `results/${competition}`);
 
-    let resultsData = {};
+    // Listen for results
+    const unsubscribeResults = onValue(resultsRef, (resultsSnap) => {
+      const resultsData = resultsSnap.exists() ? resultsSnap.val() : {};
 
-    // Listen for results first
-    onValue(resultsRef, (snapshot) => {
-      resultsData = snapshot.exists() ? snapshot.val() : {};
-
-      // Then listen for submissions
-      onValue(submissionsRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.val();
+      // Listen for submissions under the competition
+      const unsubscribeSubs = onValue(submissionsRef, (subsSnap) => {
+        if (subsSnap.exists()) {
+          const data = subsSnap.val();
 
           const formatted = Object.keys(data).map((teamKey) => {
             const submission = data[teamKey];
-
-            // Convert predictions object to array
             const preds = Object.values(submission.predictions || {});
 
-            // Only count matches that have results
+            // Only include matches that have results
             const matchesWithResults = preds.filter(
               (p) => resultsData[p.id] !== undefined
             );
@@ -46,10 +42,10 @@ export default function LeaderboardScreen() {
               (p) => resultsData[p.id] === p.winner
             ).length;
 
-            const totalCount = matchesWithResults.length;
-
             const score =
-              totalCount > 0 ? Math.round((correct / totalCount) * 100) : 0;
+              matchesWithResults.length > 0
+                ? Math.round((correct / matchesWithResults.length) * 100)
+                : 0;
 
             return {
               teamName: submission.teamName || teamKey,
@@ -59,15 +55,21 @@ export default function LeaderboardScreen() {
             };
           });
 
+          // Sort descending by score
           formatted.sort((a, b) => b.score - a.score);
           setSubmissions(formatted);
         } else {
           setSubmissions([]);
         }
-
         setLoading(false);
       });
+
+      // Cleanup listener for submissions
+      return () => unsubscribeSubs();
     });
+
+    // Cleanup listener for results
+    return () => unsubscribeResults();
   }, []);
 
   if (loading)
