@@ -1,24 +1,24 @@
-import React, { useState, useEffect } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Picker } from "@react-native-picker/picker";
+import { useRouter } from "expo-router";
+import { get, getDatabase, onValue, ref, update } from "firebase/database";
+import React, { useEffect, useState } from "react";
 import {
-  View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  StyleSheet,
-  Modal,
-  Alert,
-  ActivityIndicator,
   TouchableWithoutFeedback,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getDatabase, ref, get, onValue, update } from "firebase/database";
 import { firebaseApp } from "../firebaseConfig";
-import { Picker } from "@react-native-picker/picker";
-import { Ionicons } from "@expo/vector-icons";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const competition = "magnum2025"; // can be dynamic later
+  const competition = "magnum2025"; // dynamic later
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -27,20 +27,20 @@ export default function HomeScreen() {
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [hasPredictions, setHasPredictions] = useState(false);
 
-  // 🕓 Load deadline from Firebase
+  // Load deadline
   useEffect(() => {
-    const checkDeadline = async () => {
+    const loadDeadline = async () => {
       const db = getDatabase(firebaseApp);
-      const deadlineSnap = await get(ref(db, `deadlines/${competition}`));
-      if (deadlineSnap.exists()) {
-        const deadline = new Date(deadlineSnap.val());
+      const snap = await get(ref(db, `${competition}/deadline`));
+      if (snap.exists()) {
+        const deadline = new Date(snap.val());
         if (new Date() > deadline) setDeadlinePassed(true);
       }
     };
-    checkDeadline();
+    loadDeadline();
   }, []);
 
-  // 📦 Check if user has already made predictions locally
+  // Check local predictions
   useEffect(() => {
     const checkLocalPredictions = async () => {
       const stored = await AsyncStorage.getItem("lockedPredictions");
@@ -49,10 +49,10 @@ export default function HomeScreen() {
     checkLocalPredictions();
   }, []);
 
-  // 🔥 Load team list from Firebase dynamically
+  // Load teams
   useEffect(() => {
     const db = getDatabase(firebaseApp);
-    const teamsRef = ref(db, `teams/${competition}`);
+    const teamsRef = ref(db, `${competition}/teams`);
 
     const unsubscribe = onValue(teamsRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -60,7 +60,7 @@ export default function HomeScreen() {
         const teamList = Object.keys(data).map((key) => ({
           id: key,
           name: data[key].teamName || key,
-          hasSubmitted: data[key].hasSubmitted || false,
+          hasSubmitted: !!data[key].hasSubmitted,
         }));
         setTeams(teamList);
       } else {
@@ -77,7 +77,7 @@ export default function HomeScreen() {
     return team ? team.name : "";
   };
 
-  // 🚀 Handle main button press
+  // Main button
   const handleMainButtonPress = () => {
     if (hasPredictions || deadlinePassed) {
       router.push("/(tabs)/predictions");
@@ -86,7 +86,7 @@ export default function HomeScreen() {
     }
   };
 
-  // ✅ Handle team selection
+  // Continue with selected team
   const handleContinue = async () => {
     if (!selectedTeamId) {
       Alert.alert("Please select a team");
@@ -94,16 +94,16 @@ export default function HomeScreen() {
     }
 
     const db = getDatabase(firebaseApp);
-    const teamRef = ref(db, `teams/${competition}/${selectedTeamId}`);
-    const teamSnap = await get(teamRef);
-    const teamData = teamSnap.exists() ? teamSnap.val() : {};
+    const teamRef = ref(db, `${competition}/teams/${selectedTeamId}`);
+    const snap = await get(teamRef);
+    const teamData = snap.exists() ? snap.val() : {};
 
     if (teamData.hasSubmitted) {
       Alert.alert(
         "Team Already Submitted",
         `${
           teamData.teamName || getSelectedTeamName()
-        } has already entered their predictions!`,
+        } has already entered predictions!`,
         [{ text: "OK", style: "cancel" }]
       );
       return;
@@ -114,18 +114,18 @@ export default function HomeScreen() {
     router.push("/competition");
   };
 
-  // 🧹 Admin/dev button
+  // Admin/dev: reset hasSubmitted locally and remotely
   const handleClearLocalData = async () => {
     try {
       const db = getDatabase(firebaseApp);
-      const teamsRef = ref(db, `teams/${competition}`);
+      const teamsRef = ref(db, `${competition}/teams`);
       const snapshot = await get(teamsRef);
 
       if (snapshot.exists()) {
         const data = snapshot.val();
         const updates = {};
         Object.keys(data).forEach((teamKey) => {
-          updates[`teams/${competition}/${teamKey}/hasSubmitted`] = false;
+          updates[`${competition}/teams/${teamKey}/hasSubmitted`] = false;
         });
         await update(ref(db), updates);
       }
@@ -133,10 +133,7 @@ export default function HomeScreen() {
       await AsyncStorage.multiRemove(["lockedPredictions", "teamName"]);
       setHasPredictions(false);
 
-      Alert.alert(
-        "All data cleared",
-        "Local data and team submissions have been reset."
-      );
+      Alert.alert("All data cleared", "Local data and team submissions reset.");
     } catch (err) {
       console.error("Error clearing local data:", err);
       Alert.alert("Error", "Failed to clear data. Check your connection.");
@@ -170,7 +167,6 @@ export default function HomeScreen() {
         <Text style={styles.buttonText}>Clear Local Data</Text>
       </TouchableOpacity>
 
-      {/* 🧩 Team selection modal */}
       <Modal visible={modalVisible} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
           <View style={styles.modalOverlay}>
@@ -198,7 +194,7 @@ export default function HomeScreen() {
                     >
                       <Picker.Item label="Choose your team..." value="" />
                       {teams
-                        .sort((a, b) => a.name.localeCompare(b.name)) // 🔹 sort alphabetically
+                        .sort((a, b) => a.name.localeCompare(b.name))
                         .map((team) => (
                           <Picker.Item
                             key={team.id}
@@ -264,12 +260,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  closeButton: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    zIndex: 1,
-  },
+  closeButton: { position: "absolute", top: 10, right: 10, zIndex: 1 },
   modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 15 },
   picker: { width: "100%", marginVertical: 10 },
   continueButton: {

@@ -1,16 +1,16 @@
-import { useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { getDatabase, onValue, ref } from "firebase/database";
+import { useCallback, useState } from "react";
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { matches } from "../../constants/matches";
-import { getDatabase, ref, onValue } from "firebase/database";
 import { firebaseApp } from "../../firebaseConfig";
 
 export default function MyPredictionsScreen() {
@@ -18,13 +18,15 @@ export default function MyPredictionsScreen() {
   const [results, setResults] = useState({});
   const router = useRouter();
 
-  // Load user's saved predictions
+  // Load user's saved predictions from AsyncStorage
   const loadPredictions = async () => {
     const stored = await AsyncStorage.getItem("lockedPredictions");
     if (stored) {
       const parsed = JSON.parse(stored);
       const ordered = matches
-        .map((m) => parsed.predictions.find((p) => p.id === m.id))
+        .map(
+          (m) => parsed.predictions[m.id] || parsed.predictions[m.id.toString()]
+        )
         .filter(Boolean);
       setPredictions(ordered);
     } else {
@@ -32,10 +34,10 @@ export default function MyPredictionsScreen() {
     }
   };
 
-  // ✅ Live listener for match results
+  // Live listener for match results
   const startResultsListener = () => {
     const db = getDatabase(firebaseApp);
-    const resultsRef = ref(db, "results/Magnum2025");
+    const resultsRef = ref(db, "results/magnum2025"); // can make dynamic later
 
     const unsubscribe = onValue(resultsRef, (snapshot) => {
       if (snapshot.exists()) {
@@ -45,14 +47,14 @@ export default function MyPredictionsScreen() {
       }
     });
 
-    return unsubscribe; // return the cleanup function directly
+    return unsubscribe;
   };
 
   useFocusEffect(
     useCallback(() => {
       loadPredictions();
       const unsubscribe = startResultsListener();
-      return () => unsubscribe(); // cleanly detach listener
+      return () => unsubscribe();
     }, [])
   );
 
@@ -78,7 +80,6 @@ export default function MyPredictionsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* 🔙 Back button */}
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => router.replace("/")}
@@ -89,7 +90,6 @@ export default function MyPredictionsScreen() {
 
       <Text style={styles.title}>Your Predictions</Text>
 
-      {/* Table header */}
       <View style={[styles.row, styles.headerRow]}>
         <Text style={[styles.cell, styles.match]}>Match</Text>
         <Text style={[styles.cell, styles.pick]}>Your Pick</Text>

@@ -21,7 +21,7 @@ export default function MatchesScreen() {
   const [predictions, setPredictions] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [submissionClosed, setSubmissionClosed] = useState(false);
-  const [teams, setTeams] = useState({}); // stores team info dynamically
+  const [teams, setTeams] = useState({});
 
   const competition = "magnum2025";
 
@@ -34,24 +34,24 @@ export default function MatchesScreen() {
     loadPredictions();
   }, [modalVisible]);
 
-  // Check if submission deadline passed
+  // Check deadline
   useEffect(() => {
     const checkDeadline = async () => {
       const db = getDatabase(firebaseApp);
-      const snap = await get(ref(db, `deadlines/${competition}`));
+      const snap = await get(ref(db, `${competition}/deadline`));
       const deadline = snap.exists() ? new Date(snap.val()) : null;
       if (deadline && new Date() > deadline) setSubmissionClosed(true);
     };
     checkDeadline();
   }, []);
 
-  // Load teams dynamically from Firebase
+  // Load teams dynamically
   useEffect(() => {
     const fetchTeams = async () => {
       const db = getDatabase(firebaseApp);
-      const snap = await get(ref(db, `teams/${competition}`));
+      const snap = await get(ref(db, `${competition}/teams`));
       if (snap.exists()) {
-        setTeams(snap.val()); // { t1: { hasSubmitted, teamName }, ... }
+        setTeams(snap.val());
       }
     };
     fetchTeams();
@@ -65,12 +65,11 @@ export default function MatchesScreen() {
       : { ...m, competitionId: competition };
   });
 
-  // Preview predictions before submitting
   const handlePreviewAndSubmit = async () => {
-    const snap = await get(
-      ref(getDatabase(firebaseApp), `deadlines/${competition}`)
-    );
+    const db = getDatabase(firebaseApp);
+    const snap = await get(ref(db, `${competition}/deadline`));
     const deadline = snap.exists() ? new Date(snap.val()) : null;
+
     if (deadline && new Date() > deadline) {
       Alert.alert(
         "Submissions Closed",
@@ -78,10 +77,12 @@ export default function MatchesScreen() {
       );
       return;
     }
+
     if (predictions.length === 0) {
       Alert.alert("No Predictions", "You have not made any predictions yet!");
       return;
     }
+
     setModalVisible(true);
   };
 
@@ -127,7 +128,7 @@ export default function MatchesScreen() {
                           teamA: teamAName,
                           teamB: teamBName,
                           winner: team,
-                          competitionId: item.competitionId,
+                          competitionId: competition,
                         });
                         setPredictions(newPredictions);
                         await AsyncStorage.setItem(
@@ -180,8 +181,8 @@ export default function MatchesScreen() {
                 title="Submit"
                 onPress={async () => {
                   try {
-                    const teamName = await AsyncStorage.getItem("teamName");
-                    if (!teamName) {
+                    const teamId = await AsyncStorage.getItem("teamName");
+                    if (!teamId) {
                       alert(
                         "No team selected. Please go back and select your team first."
                       );
@@ -189,7 +190,7 @@ export default function MatchesScreen() {
                     }
 
                     const db = getDatabase(firebaseApp);
-                    const teamRef = ref(db, `teams/${competition}/${teamName}`);
+                    const teamRef = ref(db, `${competition}/teams/${teamId}`);
                     const teamSnap = await get(teamRef);
 
                     if (teamSnap.exists() && teamSnap.val().hasSubmitted) {
@@ -197,20 +198,23 @@ export default function MatchesScreen() {
                       return;
                     }
 
-                    // Convert array to object for Realtime Database
                     const predictionsObj = {};
                     predictions.forEach((p, index) => {
                       predictionsObj[index] = p;
                     });
 
                     const submission = {
-                      teamName,
+                      teamName: teams[teamId]?.teamName || teamId,
                       competition,
                       timeSubmitted: new Date().toISOString(),
                       predictions: predictionsObj,
                     };
 
-                    await set(ref(db, `submissions/${teamName}`), submission);
+                    // ✅ Save under competition path
+                    await set(
+                      ref(db, `${competition}/submissions/${teamId}`),
+                      submission
+                    );
                     await update(teamRef, { hasSubmitted: true });
 
                     await AsyncStorage.setItem(

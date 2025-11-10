@@ -1,22 +1,24 @@
+import { getDatabase, onValue, ref } from "firebase/database";
 import { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
   ActivityIndicator,
+  FlatList,
   StyleSheet,
+  Text,
+  View,
 } from "react-native";
-import { getDatabase, ref, onValue } from "firebase/database";
 import { firebaseApp } from "../../firebaseConfig";
 
 export default function LeaderboardScreen() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const competition = "magnum2025"; // can be dynamic later
+
   useEffect(() => {
     const db = getDatabase(firebaseApp);
-    const submissionsRef = ref(db, "submissions");
-    const resultsRef = ref(db, "results/Magnum2025"); // can make dynamic later
+    const submissionsRef = ref(db, `submissions/${competition}`);
+    const resultsRef = ref(db, `results/${competition}`);
 
     let resultsData = {};
 
@@ -29,12 +31,16 @@ export default function LeaderboardScreen() {
         if (snapshot.exists()) {
           const data = snapshot.val();
 
-          const formatted = Object.keys(data).map((key) => {
-            const submission = data[key];
-            const preds = submission.predictions || [];
+          const formatted = Object.keys(data).map((teamKey) => {
+            const submission = data[teamKey];
 
-            // ✅ Only count matches that have results
-            const matchesWithResults = preds.filter((p) => resultsData[p.id]);
+            // Convert predictions object to array
+            const preds = Object.values(submission.predictions || {});
+
+            // Only count matches that have results
+            const matchesWithResults = preds.filter(
+              (p) => resultsData[p.id] !== undefined
+            );
 
             const correct = matchesWithResults.filter(
               (p) => resultsData[p.id] === p.winner
@@ -42,12 +48,11 @@ export default function LeaderboardScreen() {
 
             const totalCount = matchesWithResults.length;
 
-            // ✅ Calculate score only from matches with results
             const score =
               totalCount > 0 ? Math.round((correct / totalCount) * 100) : 0;
 
             return {
-              teamName: submission.teamName || key,
+              teamName: submission.teamName || teamKey,
               competition: submission.competition,
               predictions: preds,
               score,
@@ -59,6 +64,7 @@ export default function LeaderboardScreen() {
         } else {
           setSubmissions([]);
         }
+
         setLoading(false);
       });
     });
