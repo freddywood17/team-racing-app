@@ -13,82 +13,86 @@ export default function LeaderboardScreen() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const competition = "magnum2025"; // can make dynamic later
+  const competition = "magnum2025"; // dynamic later if needed
 
   useEffect(() => {
     const db = getDatabase(firebaseApp);
-    const submissionsRef = ref(db, `submissions/${competition}`);
-    const resultsRef = ref(db, `results/${competition}`);
+    const submissionsRef = ref(db, `${competition}/submissions`);
+    const resultsRef = ref(db, `${competition}/results`);
 
-    // Listen for results
+    // Listen to results first
     const unsubscribeResults = onValue(resultsRef, (resultsSnap) => {
       const resultsData = resultsSnap.exists() ? resultsSnap.val() : {};
 
-      // Listen for submissions under the competition
+      // Listen to submissions
       const unsubscribeSubs = onValue(submissionsRef, (subsSnap) => {
-        if (subsSnap.exists()) {
-          const data = subsSnap.val();
-
-          const formatted = Object.keys(data).map((teamKey) => {
-            const submission = data[teamKey];
-            const preds = Object.values(submission.predictions || {});
-
-            // Only include matches that have results
-            const matchesWithResults = preds.filter(
-              (p) => resultsData[p.id] !== undefined
-            );
-
-            const correct = matchesWithResults.filter(
-              (p) => resultsData[p.id] === p.winner
-            ).length;
-
-            const score =
-              matchesWithResults.length > 0
-                ? Math.round((correct / matchesWithResults.length) * 100)
-                : 0;
-
-            return {
-              teamName: submission.teamName || teamKey,
-              competition: submission.competition,
-              predictions: preds,
-              score,
-            };
-          });
-
-          // Sort descending by score
-          formatted.sort((a, b) => b.score - a.score);
-          setSubmissions(formatted);
-        } else {
+        if (!subsSnap.exists()) {
           setSubmissions([]);
+          setLoading(false);
+          return;
         }
+
+        const subsData = subsSnap.val();
+
+        // Format each submission with score
+        const formatted = Object.keys(subsData).map((teamKey) => {
+          const submission = subsData[teamKey];
+          const predictions = Object.values(submission.predictions || {});
+
+          // Only consider matches that have results
+          const matchesWithResults = predictions.filter(
+            (p) => resultsData[p.id] !== undefined
+          );
+
+          const correctCount = matchesWithResults.filter(
+            (p) => resultsData[p.id] === p.winner
+          ).length;
+
+          const score =
+            matchesWithResults.length > 0
+              ? Math.round((correctCount / matchesWithResults.length) * 100)
+              : 0;
+
+          return {
+            teamName: submission.teamName || teamKey,
+            competition: submission.competition,
+            predictions,
+            score,
+          };
+        });
+
+        // Sort by score descending
+        formatted.sort((a, b) => b.score - a.score);
+        setSubmissions(formatted);
         setLoading(false);
       });
 
-      // Cleanup listener for submissions
       return () => unsubscribeSubs();
     });
 
-    // Cleanup listener for results
     return () => unsubscribeResults();
   }, []);
 
-  if (loading)
+  if (loading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" color="#007AFF" />
       </View>
     );
+  }
 
-  if (submissions.length === 0)
+  if (submissions.length === 0) {
     return (
       <View style={styles.centered}>
         <Text style={styles.emptyText}>No submissions yet 🕓</Text>
       </View>
     );
+  }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>🏆 Leaderboard</Text>
+
       <FlatList
         data={submissions}
         keyExtractor={(item) => item.teamName}
