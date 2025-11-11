@@ -93,25 +93,39 @@ export default function HomeScreen() {
       return;
     }
 
-    const db = getDatabase(firebaseApp);
-    const teamRef = ref(db, `${competition}/teams/${selectedTeamId}`);
-    const snap = await get(teamRef);
-    const teamData = snap.exists() ? snap.val() : {};
+    try {
+      const db = getDatabase(firebaseApp);
+      const teamRef = ref(db, `${competition}/teams/${selectedTeamId}`);
+      const snap = await get(teamRef);
+      const teamData = snap.exists() ? snap.val() : {};
 
-    if (teamData.hasSubmitted) {
-      Alert.alert(
-        "Team Already Submitted",
-        `${
-          teamData.teamName || getSelectedTeamName()
-        } has already entered predictions!`,
-        [{ text: "OK", style: "cancel" }]
+      if (teamData.hasSubmitted) {
+        Alert.alert(
+          "Team Already Submitted",
+          `${
+            teamData.teamName || getSelectedTeamName()
+          } has already entered predictions!`,
+          [{ text: "OK", style: "cancel" }]
+        );
+        return;
+      }
+
+      // ✅ Update hasSubmitted directly at the child ref
+      const hasSubmittedRef = ref(
+        db,
+        `${competition}/teams/${selectedTeamId}/hasSubmitted`
       );
-      return;
-    }
+      await set(hasSubmittedRef, true);
 
-    await AsyncStorage.setItem("teamName", selectedTeamId);
-    setModalVisible(false);
-    router.push("/competition");
+      // Store selected team locally
+      await AsyncStorage.setItem("teamName", selectedTeamId);
+
+      setModalVisible(false);
+      router.push("/competition");
+    } catch (err) {
+      console.error("Error submitting predictions:", err);
+      Alert.alert("Error", "Failed to submit your predictions. Try again.");
+    }
   };
 
   // Admin/dev: reset hasSubmitted locally and remotely
