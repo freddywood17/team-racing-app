@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { get, getDatabase, ref, set, update } from "firebase/database";
+import { get, getDatabase, ref, set } from "firebase/database";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -45,14 +45,12 @@ export default function MatchesScreen() {
     checkDeadline();
   }, []);
 
-  // Load teams dynamically
+  // Load teams
   useEffect(() => {
     const fetchTeams = async () => {
       const db = getDatabase(firebaseApp);
       const snap = await get(ref(db, `${competition}/teams`));
-      if (snap.exists()) {
-        setTeams(snap.val());
-      }
+      if (snap.exists()) setTeams(snap.val());
     };
     fetchTeams();
   }, []);
@@ -65,6 +63,7 @@ export default function MatchesScreen() {
       : { ...m, competitionId: competition };
   });
 
+  // Handle preview & submit button
   const handlePreviewAndSubmit = async () => {
     const db = getDatabase(firebaseApp);
     const snap = await get(ref(db, `${competition}/deadline`));
@@ -84,6 +83,59 @@ export default function MatchesScreen() {
     }
 
     setModalVisible(true);
+  };
+
+  // Submit predictions safely
+  const handleSubmit = async () => {
+    try {
+      const teamId = await AsyncStorage.getItem("teamName");
+      if (!teamId) {
+        alert("No team selected. Please go back and select your team first.");
+        return;
+      }
+
+      const db = getDatabase(firebaseApp);
+      const teamRef = ref(db, `${competition}/teams/${teamId}`);
+      const teamSnap = await get(teamRef);
+
+      if (teamSnap.exists() && teamSnap.val().hasSubmitted) {
+        alert("Your team has already made their predictions!");
+        return;
+      }
+
+      // Prepare predictions object
+      const predictionsObj = {};
+      predictions.forEach((p, index) => {
+        predictionsObj[index] = p;
+      });
+
+      const submission = {
+        teamName: teams[teamId]?.teamName || teamId,
+        competition,
+        timeSubmitted: new Date().toISOString(),
+        predictions: predictionsObj,
+      };
+
+      // ✅ Save under submissions path
+      await set(ref(db, `${competition}/submissions/${teamId}`), submission);
+
+      // ✅ Safely mark team as submitted
+      await set(ref(db, `${competition}/teams/${teamId}/hasSubmitted`), true);
+
+      // Update local storage
+      await AsyncStorage.setItem(
+        "lockedPredictions",
+        JSON.stringify(submission)
+      );
+      await AsyncStorage.removeItem("predictions");
+
+      alert("Predictions submitted successfully!");
+      setModalVisible(false);
+      router.replace("/(tabs)/predictions");
+    } catch (error) {
+      console.error("Error submitting predictions:", error);
+      alert("Error submitting predictions.");
+    }
   };
 
   return (
@@ -177,61 +229,7 @@ export default function MatchesScreen() {
 
             <View style={styles.modalButtons}>
               <Button title="Go Back" onPress={() => setModalVisible(false)} />
-              <Button
-                title="Submit"
-                onPress={async () => {
-                  try {
-                    const teamId = await AsyncStorage.getItem("teamName");
-                    if (!teamId) {
-                      alert(
-                        "No team selected. Please go back and select your team first."
-                      );
-                      return;
-                    }
-
-                    const db = getDatabase(firebaseApp);
-                    const teamRef = ref(db, `${competition}/teams/${teamId}`);
-                    const teamSnap = await get(teamRef);
-
-                    if (teamSnap.exists() && teamSnap.val().hasSubmitted) {
-                      alert("Your team has already made their predictions!");
-                      return;
-                    }
-
-                    const predictionsObj = {};
-                    predictions.forEach((p, index) => {
-                      predictionsObj[index] = p;
-                    });
-
-                    const submission = {
-                      teamName: teams[teamId]?.teamName || teamId,
-                      competition,
-                      timeSubmitted: new Date().toISOString(),
-                      predictions: predictionsObj,
-                    };
-
-                    // ✅ Save under competition path
-                    await set(
-                      ref(db, `${competition}/submissions/${teamId}`),
-                      submission
-                    );
-                    await update(teamRef, { hasSubmitted: true });
-
-                    await AsyncStorage.setItem(
-                      "lockedPredictions",
-                      JSON.stringify(submission)
-                    );
-                    await AsyncStorage.removeItem("predictions");
-
-                    alert("Predictions submitted successfully!");
-                    setModalVisible(false);
-                    router.replace("/(tabs)/predictions");
-                  } catch (error) {
-                    console.error("Error submitting predictions:", error);
-                    alert("Error submitting predictions.");
-                  }
-                }}
-              />
+              <Button title="Submit" onPress={handleSubmit} />
             </View>
           </View>
         </View>
