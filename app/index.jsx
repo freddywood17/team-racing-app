@@ -23,22 +23,50 @@ export default function HomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [teams, setTeams] = useState([]);
+  const [deadline, setDeadline] = useState(null);
+  const [timeLeft, setTimeLeft] = useState("");
   const [deadlinePassed, setDeadlinePassed] = useState(false);
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [hasPredictions, setHasPredictions] = useState(false);
 
-  // Load deadline
+  // Load deadline and set interval for countdown
   useEffect(() => {
-    const loadDeadline = async () => {
-      const db = getDatabase(firebaseApp);
-      const snap = await get(ref(db, `${competition}/deadline`));
+    const db = getDatabase(firebaseApp);
+    const deadlineRef = ref(db, `${competition}/deadline`);
+
+    const fetchDeadline = async () => {
+      const snap = await get(deadlineRef);
       if (snap.exists()) {
-        const deadline = new Date(snap.val());
-        if (new Date() > deadline) setDeadlinePassed(true);
+        const d = new Date(snap.val());
+        setDeadline(d);
+        if (new Date() > d) setDeadlinePassed(true);
       }
     };
-    loadDeadline();
-  }, []);
+
+    fetchDeadline();
+
+    const interval = setInterval(() => {
+      if (!deadline) return;
+      const now = new Date();
+      const diff = deadline - now;
+
+      if (diff <= 0) {
+        setTimeLeft("Deadline passed");
+        setDeadlinePassed(true);
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / (1000 * 60)) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+
+      setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s remaining`);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [deadline]);
 
   // Check local predictions
   useEffect(() => {
@@ -150,6 +178,10 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Oxford Magnum Sweepstake</Text>
 
+      {deadline && !deadlinePassed && (
+        <Text style={styles.countdown}>{timeLeft}</Text>
+      )}
+
       <TouchableOpacity
         style={[
           styles.button,
@@ -237,7 +269,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "white",
   },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 20 },
+  title: { fontSize: 24, fontWeight: "bold", marginBottom: 10 },
+  countdown: {
+    fontSize: 16,
+    fontWeight: "500",
+    marginBottom: 20,
+    color: "#ff4500",
+  },
   button: {
     backgroundColor: "#007AFF",
     paddingVertical: 14,
