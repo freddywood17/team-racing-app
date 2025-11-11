@@ -29,24 +29,24 @@ export default function HomeScreen() {
   const [loadingTeams, setLoadingTeams] = useState(true);
   const [hasPredictions, setHasPredictions] = useState(false);
 
-  // Load deadline and set interval for countdown
+  // Load deadline
   useEffect(() => {
-    const db = getDatabase(firebaseApp);
-    const deadlineRef = ref(db, `${competition}/deadline`);
-
-    const fetchDeadline = async () => {
-      const snap = await get(deadlineRef);
+    const loadDeadline = async () => {
+      const db = getDatabase(firebaseApp);
+      const snap = await get(ref(db, `${competition}/deadline`));
       if (snap.exists()) {
         const d = new Date(snap.val());
         setDeadline(d);
         if (new Date() > d) setDeadlinePassed(true);
       }
     };
+    loadDeadline();
+  }, []);
 
-    fetchDeadline();
-
+  // Countdown timer (starts after deadline is set)
+  useEffect(() => {
+    if (!deadline) return;
     const interval = setInterval(() => {
-      if (!deadline) return;
       const now = new Date();
       const diff = deadline - now;
 
@@ -105,7 +105,6 @@ export default function HomeScreen() {
     return team ? team.name : "";
   };
 
-  // Main button
   const handleMainButtonPress = () => {
     if (hasPredictions || deadlinePassed) {
       router.push("/(tabs)/predictions");
@@ -114,7 +113,6 @@ export default function HomeScreen() {
     }
   };
 
-  // Continue with selected team
   const handleContinue = async () => {
     if (!selectedTeamId) {
       Alert.alert("Please select a team");
@@ -142,7 +140,6 @@ export default function HomeScreen() {
     router.push("/competition");
   };
 
-  // Admin/dev: reset hasSubmitted locally and remotely
   const handleClearLocalData = async () => {
     try {
       const db = getDatabase(firebaseApp);
@@ -178,10 +175,6 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Oxford Magnum Sweepstake</Text>
 
-      {deadline && !deadlinePassed && (
-        <Text style={styles.countdown}>{timeLeft}</Text>
-      )}
-
       <TouchableOpacity
         style={[
           styles.button,
@@ -198,6 +191,9 @@ export default function HomeScreen() {
       >
         <Text style={styles.buttonText}>Clear Local Data</Text>
       </TouchableOpacity>
+
+      {/* Countdown */}
+      <Text style={styles.countdown}>{timeLeft}</Text>
 
       <Modal visible={modalVisible} transparent animationType="fade">
         <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
@@ -246,7 +242,9 @@ export default function HomeScreen() {
                       onPress={handleContinue}
                     >
                       <Text style={styles.continueText}>
-                        Continue as {getSelectedTeamName() || "Team"}
+                        {selectedTeamId
+                          ? `Continue as ${getSelectedTeamName()}`
+                          : "Please Select Team"}
                       </Text>
                     </TouchableOpacity>
                   </>
@@ -271,10 +269,11 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: "bold", marginBottom: 10 },
   countdown: {
-    fontSize: 16,
-    fontWeight: "500",
-    marginBottom: 20,
+    fontSize: 28,
+    fontWeight: "bold",
     color: "#ff4500",
+    marginTop: 20,
+    textAlign: "center",
   },
   button: {
     backgroundColor: "#007AFF",
