@@ -8,6 +8,7 @@ import {
   Button,
   FlatList,
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -116,13 +117,13 @@ export default function MatchesScreen() {
         predictions: predictionsObj,
       };
 
-      // ✅ Save under submissions path
+      // Save under submissions path
       await set(ref(db, `${competition}/submissions/${teamId}`), submission);
 
-      // ✅ Safely mark team as submitted
+      // Mark team as submitted
       await set(ref(db, `${competition}/teams/${teamId}/hasSubmitted`), true);
 
-      // Update local storage
+      // Local storage
       await AsyncStorage.setItem(
         "lockedPredictions",
         JSON.stringify(submission)
@@ -212,27 +213,37 @@ export default function MatchesScreen() {
         disabled={submissionClosed}
       />
 
+      {/* === FIXED SCROLLABLE MODAL === */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPressOut={() => setModalVisible(false)}
+        >
           <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Your Predictions</Text>
+            <ScrollView
+              style={{ maxHeight: "80%" }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.modalTitle}>Your Predictions</Text>
 
-            {predictions
-              .slice()
-              .sort((a, b) => parseInt(a.id) - parseInt(b.id))
-              .map((p) => (
-                <Text key={p.id} style={styles.predictionText}>
-                  {p.teamA} vs {p.teamB} →{" "}
-                  <Text style={{ fontWeight: "bold" }}>{p.winner}</Text>
-                </Text>
-              ))}
+              {predictions
+                .slice()
+                .sort((a, b) => parseInt(a.id) - parseInt(b.id))
+                .map((p) => (
+                  <Text key={p.id} style={styles.predictionText}>
+                    {p.teamA} vs {p.teamB} →{" "}
+                    <Text style={{ fontWeight: "bold" }}>{p.winner}</Text>
+                  </Text>
+                ))}
+            </ScrollView>
 
             <View style={styles.modalButtons}>
               <Button title="Go Back" onPress={() => setModalVisible(false)} />
               <Button title="Submit" onPress={handleSubmit} />
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -249,36 +260,43 @@ const styles = StyleSheet.create({
   backButton: { position: "absolute", top: 40, left: 20, zIndex: 1 },
   matchItem: { marginVertical: 10 },
   matchText: { fontSize: 18, textAlign: "center" },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 20,
   },
+
   modalView: {
-    width: "90%",
-    maxHeight: "80%",
+    width: "100%",
     backgroundColor: "white",
     borderRadius: 12,
     padding: 20,
   },
+
   modalTitle: {
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 10,
     textAlign: "center",
   },
+
   predictionText: { fontSize: 16, marginVertical: 6 },
+
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 20,
+    marginTop: 15,
   },
+
   teamsContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
     marginTop: 8,
   },
+
   teamButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,

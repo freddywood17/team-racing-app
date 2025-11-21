@@ -22,12 +22,20 @@ export default function MyPredictionsScreen() {
     const stored = await AsyncStorage.getItem("lockedPredictions");
 
     if (stored) {
-      const parsed = JSON.parse(stored); // <-- this is an ARRAY
+      const parsed = JSON.parse(stored);
 
-      // Sort by match ID (numeric)
-      const ordered = parsed.sort((a, b) => Number(a.id) - Number(b.id));
+      // Ensure predictions exist
+      if (parsed && parsed.predictions) {
+        // Convert object → array
+        const arr = Object.values(parsed.predictions);
 
-      setPredictions(ordered);
+        // Sort by match ID
+        const ordered = arr.sort((a, b) => Number(a.id) - Number(b.id));
+
+        setPredictions(ordered);
+      } else {
+        setPredictions([]);
+      }
     } else {
       setPredictions([]);
     }
@@ -37,7 +45,7 @@ export default function MyPredictionsScreen() {
   const startResultsListener = () => {
     const db = getDatabase(firebaseApp);
 
-    // FIXED: correct path "magnum2025/results"
+    // Correct path: magnum2025/results
     const resultsRef = ref(db, "magnum2025/results");
 
     const unsubscribe = onValue(resultsRef, (snapshot) => {
