@@ -17,15 +17,16 @@ export default function MyPredictionsScreen() {
   const [results, setResults] = useState({});
   const router = useRouter();
 
-  // Load user's saved predictions
+  // Load the user's saved + locked predictions
   const loadPredictions = async () => {
     const stored = await AsyncStorage.getItem("lockedPredictions");
+
     if (stored) {
-      const parsed = JSON.parse(stored);
-      // Convert predictions object to an array sorted by numeric key
-      const ordered = Object.keys(parsed.predictions)
-        .sort((a, b) => Number(a) - Number(b))
-        .map((key) => parsed.predictions[key]);
+      const parsed = JSON.parse(stored); // <-- this is an ARRAY
+
+      // Sort by match ID (numeric)
+      const ordered = parsed.sort((a, b) => Number(a.id) - Number(b.id));
+
       setPredictions(ordered);
     } else {
       setPredictions([]);
@@ -35,10 +36,14 @@ export default function MyPredictionsScreen() {
   // Live listener for results
   const startResultsListener = () => {
     const db = getDatabase(firebaseApp);
-    const resultsRef = ref(db, "results/magnum2025"); // dynamic later if needed
+
+    // FIXED: correct path "magnum2025/results"
+    const resultsRef = ref(db, "magnum2025/results");
+
     const unsubscribe = onValue(resultsRef, (snapshot) => {
       setResults(snapshot.exists() ? snapshot.val() : {});
     });
+
     return unsubscribe;
   };
 
@@ -52,6 +57,7 @@ export default function MyPredictionsScreen() {
 
   const renderItem = ({ item }) => {
     const matchResult = results[item.id];
+
     const resultText = matchResult
       ? `${matchResult} ${matchResult === item.winner ? "✅" : "❌"}`
       : "⏰ Pending";
