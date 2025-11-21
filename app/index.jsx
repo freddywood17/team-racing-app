@@ -185,12 +185,13 @@ export default function HomeScreen() {
         <Text style={styles.buttonText}>{buttonText}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
+      {/*} <TouchableOpacity
         style={[styles.button, { backgroundColor: "red", marginTop: 15 }]}
         onPress={handleClearLocalData}
       >
         <Text style={styles.buttonText}>Clear Local Data</Text>
       </TouchableOpacity>
+*/}
 
       {/* Countdown */}
       <Text style={styles.countdown}>{timeLeft}</Text>
